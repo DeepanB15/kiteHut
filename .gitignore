@@ -12,3 +12,11 @@ dist/
 .kitehut/embeddings.jsonl
 backend/.kitehut/embeddings.jsonl
 backend/workspace/
+
+# Keep local environment config private; commit only example templates.
+.env
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.*.example
+KiteHut/
