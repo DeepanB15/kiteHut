@@ -1,3 +1,0 @@
-import sys, os
-sys.path.insert(0, r"C:\Users\Deepan B\Desktop\codez\repo-lens\packages")
-from fastapi import APIRouter, Depends
