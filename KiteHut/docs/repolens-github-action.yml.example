@@ -1,0 +1,33 @@
+# ============================================================
+# RepoLens — GitHub Actions trigger (example)
+#
+# Copy this file into a target repository as:
+#     .github/workflows/repolens-analysis.yml
+#
+# It calls the RepoLens API whenever a pull request is opened or
+# updated. RepoLens then analyzes the PR's changed code and posts
+# a summary comment back to the pull request.
+#
+# Required repository secret:
+#     REPOLENS_URL  e.g. https://repolens.example.com
+# ============================================================
+
+name: RepoLens PR Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  repolens:
+    name: RepoLens
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call RepoLens
+        run: |
+          curl -sS -X POST "${{ secrets.REPOLENS_URL }}/api/v1/analyze-pr" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "repository_url": "https://github.com/${{ github.repository }}",
+              "pull_number": ${{ github.event.pull_request.number }}
+            }'

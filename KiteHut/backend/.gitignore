@@ -1,0 +1,24 @@
+# Virtual Environment
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Workspace repositories
+workspace/*
+!workspace/.gitkeep

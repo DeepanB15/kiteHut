@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kitehut"
+version = "2.0.0"
+description = "Local AI Engineering Agent & Continuous Guardian"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+keywords = ["agent", "repository", "analysis", "mcp", "security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "click>=8.0",
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.3",
+    "python-dotenv>=1.0",
+    "GitPython==3.1.44",
+    "langgraph",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "httpx>=0.27",
+    "reportlab>=4.2",
+    "mcp<2.0",
+]
+
+[project.scripts]
+kitehut = "app.cli.main:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-asyncio"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["tests*", "workspace*", ".venv*", ".git*"]
+
+[tool.setuptools.package-dir]
+"" = "."

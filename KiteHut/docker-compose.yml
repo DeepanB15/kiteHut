@@ -1,0 +1,100 @@
+# ============================================================
+# RepoLens — Full Production-Like Environment
+#
+# Start everything (frontend + backend + postgres):
+#     docker compose up --build
+#
+# Include the optional local LLM (Ollama):
+#     docker compose --profile ai up --build
+#
+# Services:
+#     frontend  React + Nginx on http://localhost:8080
+#     backend   FastAPI on http://localhost:8000
+#     postgres  Persistent database
+#     ollama    Optional local LLM (profile: ai)
+# ============================================================
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: repolens-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: repolens-backend
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://repolens:repolens_password@postgres:5432/repolens_db
+      POSTGRES_USER: repolens
+      POSTGRES_PASSWORD: repolens_password
+      POSTGRES_DB: repolens_db
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      # Ollama service name (available only when started with --profile ai)
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      LOG_LEVEL: info
+      RATE_LIMIT_PER_MINUTE: "120"
+    ports:
+      - "8000:8000"
+    volumes:
+      - repolens_workspace:/app/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: repolens-postgres
+    environment:
+      POSTGRES_USER: repolens
+      POSTGRES_PASSWORD: repolens_password
+      POSTGRES_DB: repolens_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repolens -d repolens_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional local LLM. Start it with:
+  #     docker compose --profile ai up -d
+  # Pull the model after startup:
+  #     docker exec repolens-ollama ollama pull qwen3:4b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: repolens-ollama
+    profiles: ["ai"]
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  ollama_data:
+  repolens_workspace:

@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: repolens
+Version: 2.0.0
+Summary: Local AI Engineering Agent & Continuous Guardian
+License: MIT
+Keywords: agent,repository,analysis,mcp,security
+Classifier: Development Status :: 4 - Beta
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: click>=8.0
+Requires-Dist: fastapi==0.115.6
+Requires-Dist: uvicorn[standard]==0.34.0
+Requires-Dist: pydantic==2.10.3
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: GitPython==3.1.44
+Requires-Dist: langgraph
+Requires-Dist: sqlalchemy>=2.0
+Requires-Dist: psycopg[binary]>=3.1
+Requires-Dist: httpx>=0.27
+Requires-Dist: reportlab>=4.2
+Requires-Dist: mcp<2.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"

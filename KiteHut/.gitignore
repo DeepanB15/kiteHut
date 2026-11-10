@@ -1,0 +1,14 @@
+# Generated / runtime / cache artifacts (Cleanup 1 — minimal)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+*.log
+*.err
+*.db
+*.db-*
+.kitehut/embeddings.jsonl
+backend/.kitehut/embeddings.jsonl
+backend/workspace/
