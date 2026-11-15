@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.runtime.core import get_agent_core
 from app.agent.state.agent_state import TaskStatus
+from app.core.config import settings
 from app.main import app
 
 client = TestClient(app)
@@ -153,8 +154,12 @@ class TestAgentTaskEndpoints:
 class TestRemediationEndpoint:
     """Test autonomous remediation endpoint."""
 
-    def test_remediate_finding_endpoint(self, temp_git_repo):
+    def test_remediate_finding_endpoint(self, temp_git_repo, monkeypatch):
         repo_path = str(temp_git_repo)
+        monkeypatch.setattr(settings, "REMEDIATION_API_TOKEN", "test-remediation-token")
+        monkeypatch.setattr(
+            settings, "REMEDIATION_ALLOWED_REPOSITORIES", repo_path
+        )
         finding_data = {
             "finding_id": "fnd_api_test_01",
             "category": "security",
@@ -169,9 +174,9 @@ class TestRemediationEndpoint:
             json={
                 "repository_path": repo_path,
                 "finding_data": finding_data,
-                "auto_approve": True,
                 "run_tests": False,
             },
+            headers={"Authorization": "Bearer test-remediation-token"},
         )
         assert res.status_code == 200
         data = res.json()

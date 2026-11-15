@@ -104,7 +104,6 @@ export interface RemediationRequest {
   repository_path: string;
   finding_id?: string;
   finding_data?: Record<string, any>;
-  auto_approve?: boolean;
   run_tests?: boolean;
   test_paths?: string[];
 }

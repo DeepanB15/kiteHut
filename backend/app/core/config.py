@@ -119,6 +119,33 @@ class Settings:
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "120"))
 
     # ------------------------------------------------------------
+    # Remediation Authorization (fail-closed)
+    # ------------------------------------------------------------
+    # KiteHut has no user authentication / repository ownership system yet.
+    # Until one exists, the remediation endpoint requires a server-side
+    # approver secret and an explicit allowlist of repository roots.
+    # Both empty => remediation over the API is disabled.
+    REMEDIATION_API_TOKEN: str = os.getenv("REMEDIATION_API_TOKEN", "")
+    REMEDIATION_ALLOWED_REPOSITORIES: str = os.getenv(
+        "REMEDIATION_ALLOWED_REPOSITORIES", ""
+    )
+
+    @property
+    def remediation_token(self) -> str | None:
+        """Server-side remediation approver secret, or None when unconfigured."""
+        return self.REMEDIATION_API_TOKEN or None
+
+    @property
+    def allowed_remediation_roots(self) -> list[Path]:
+        """Resolved repository roots the server allows remediation against."""
+        roots: list[Path] = []
+        for raw in self.REMEDIATION_ALLOWED_REPOSITORIES.split(","):
+            value = raw.strip()
+            if value:
+                roots.append(Path(value).expanduser().resolve())
+        return roots
+
+    # ------------------------------------------------------------
     # GitHub Integration (Phase 9)
     # ------------------------------------------------------------
     # Personal Access Token (optional — public repos work without it).

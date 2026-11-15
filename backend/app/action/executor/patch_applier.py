@@ -6,10 +6,11 @@ Safely applies FilePatch sets with automatic pre-modification snapshotting via T
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from app.action.models.patch import FileChangeType, ProposedPatch
+from app.action.models.patch import FileChangeType, FilePatch, ProposedPatch
 from app.agent.memory.task_memory import TaskMemory
+from app.core.path_guard import resolve_repository_path
 
 logger = logging.getLogger("repolens.action.executor")
 
@@ -20,18 +21,35 @@ class PatchApplier:
     def __init__(self, repository_path: str):
         self.root = Path(repository_path).resolve()
 
+    def _resolve_targets(
+        self, patch: ProposedPatch
+    ) -> List[Tuple[FilePatch, str, Path]]:
+        """
+        Resolve and validate every patch target before touching the filesystem.
+
+        Raises PathContainmentError if any target is absolute, traverses with
+        '..', or resolves (through symlinks) outside the repository root.
+        """
+        targets: List[Tuple[FilePatch, str, Path]] = []
+        for file_patch in patch.file_patches:
+            full_path = resolve_repository_path(self.root, file_patch.file_path)
+            rel_path = full_path.relative_to(self.root).as_posix()
+            targets.append((file_patch, rel_path, full_path))
+        return targets
+
     def apply_patch(
         self,
         patch: ProposedPatch,
         task_memory: Optional[TaskMemory] = None,
     ) -> List[str]:
         """Apply all file patches in ProposedPatch. Snapshots original content before modification."""
+        # Validate the entire patch up front: a single unsafe target aborts the
+        # whole operation before any file is created, modified, or deleted.
+        targets = self._resolve_targets(patch)
+
         modified_files: List[str] = []
 
-        for file_patch in patch.file_patches:
-            rel_path = file_patch.file_path.replace("\\", "/")
-            full_path = (self.root / rel_path).resolve()
-
+        for file_patch, rel_path, full_path in targets:
             # Record snapshot for rollback support
             if task_memory:
                 task_memory.record_file_snapshot(rel_path)

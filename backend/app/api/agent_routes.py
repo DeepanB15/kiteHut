@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     HTTPException,
     Query,
     WebSocket,
@@ -23,7 +24,12 @@ from fastapi import (
 )
 
 from app.action.loop.remediation_loop import ActionRemediationLoop
-from app.agent.permissions.policies import DecisionType
+from app.agent.permissions.manager import PermissionManager
+from app.agent.permissions.policies import DecisionType, PermissionRequest
+from app.api.remediation_security import (
+    authorize_remediation_repository,
+    require_remediation_approver,
+)
 from app.agent.runtime.core import get_agent_core
 from app.agent.state.agent_state import AgentState, TaskStatus
 from app.intelligence.models.findings import Finding, FindingCategory, FindingSeverity
@@ -311,16 +317,18 @@ def rollback_agent_task(task_id: str):
     response_model=RemediationResponse,
     summary="Run autonomous remediation loop for a finding",
 )
-def remediate_finding_endpoint(request: RemediationRequest):
+def remediate_finding_endpoint(
+    request: RemediationRequest,
+    _approver: str = Depends(require_remediation_approver),
+):
     """
     Execute autonomous Plan -> Permission -> Snapshot -> Apply -> Test -> Verify -> Rollback cycle.
+
+    Requires a valid server-side approver credential and a repository inside the
+    server-authorized allowlist. The approval decision is made server-side; the
+    request body cannot grant itself approval.
     """
-    repo_path = Path(request.repository_path).resolve()
-    if not repo_path.exists() or not repo_path.is_dir():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Repository path '{request.repository_path}' does not exist.",
-        )
+    repo_path = authorize_remediation_repository(request.repository_path)
 
     # 1. Resolve finding object
     target_finding: Optional[Finding] = None
@@ -346,12 +354,25 @@ def remediate_finding_endpoint(request: RemediationRequest):
             detail="Must provide either finding_id or finding_data.",
         )
 
-    # 2. Execute remediation loop
+    # 2. Execute remediation loop with a trusted, server-side approval decision
+    def _server_approved_decision(permission_request: PermissionRequest) -> DecisionType:
+        logger.info(
+            "Server-side remediation approval granted for %s in %s",
+            permission_request.tool_name,
+            permission_request.repository_path,
+        )
+        return DecisionType.ALLOW_ONCE
+
     try:
-        loop = ActionRemediationLoop(repository_path=str(repo_path))
+        loop = ActionRemediationLoop(
+            repository_path=str(repo_path),
+            permission_manager=PermissionManager(
+                approval_callback=_server_approved_decision,
+                auto_allow_safe=True,
+            ),
+        )
         result = loop.remediate_finding(
             finding=target_finding,
-            auto_approve=request.auto_approve,
             run_tests=request.run_tests,
             test_paths=request.test_paths,
         )

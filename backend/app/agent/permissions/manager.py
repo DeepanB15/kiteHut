@@ -6,7 +6,7 @@ Enforces security boundaries, checks tool risk policies, and manages scoped gran
 """
 
 import logging
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Dict, Optional, Set, Tuple
 
 from app.agent.permissions.policies import (
     DecisionType,
@@ -32,8 +32,10 @@ class PermissionManager:
         self.auto_allow_safe = auto_allow_safe
         self.auto_allow_all = auto_allow_all
 
-        # Scoped permission grants
-        self._task_grants: Dict[str, Set[str]] = {}  # task_id -> {tool_name}
+        # Scoped permission grants. Task grants are keyed by (task_id,
+        # repository_path) so a decision for one repository can never authorize
+        # an action in another repository.
+        self._task_grants: Dict[Tuple[str, str], Set[str]] = {}  # (task_id, repo_path) -> {tool_name}
         self._repo_grants: Dict[str, Set[str]] = {}  # repo_path -> {tool_name}
         self._denied_requests: Set[str] = set()
 
@@ -58,8 +60,10 @@ class PermissionManager:
             logger.debug("Tool %s granted at repository level", request.tool_name)
             return True
 
-        # Check task-level grants
-        task_tools = self._task_grants.get(request.task_id, set())
+        # Check task-level grants (scoped to task and repository)
+        task_tools = self._task_grants.get(
+            (request.task_id, request.repository_path), set()
+        )
         if request.tool_name in task_tools:
             logger.debug("Tool %s granted at task level", request.tool_name)
             return True
@@ -72,7 +76,9 @@ class PermissionManager:
                     logger.info("Tool %s approved for one-time execution", request.tool_name)
                     return True
                 elif decision == DecisionType.ALLOW_FOR_TASK:
-                    self._task_grants.setdefault(request.task_id, set()).add(request.tool_name)
+                    self._task_grants.setdefault(
+                        (request.task_id, request.repository_path), set()
+                    ).add(request.tool_name)
                     logger.info("Tool %s approved for entire task %s", request.tool_name, request.task_id)
                     return True
                 elif decision == DecisionType.ALLOW_FOR_REPO:
@@ -103,13 +109,29 @@ class PermissionManager:
     ) -> None:
         """Manually grant permission for a tool within a specific scope."""
         if scope == DecisionType.ALLOW_FOR_TASK and task_id:
-            self._task_grants.setdefault(task_id, set()).add(tool_name)
+            if not repository_path:
+                raise ValueError(
+                    "ALLOW_FOR_TASK grants require a repository_path so the grant "
+                    "cannot cross repository boundaries."
+                )
+            self._task_grants.setdefault((task_id, repository_path), set()).add(tool_name)
         elif scope == DecisionType.ALLOW_FOR_REPO and repository_path:
             self._repo_grants.setdefault(repository_path, set()).add(tool_name)
 
-    def revoke_task_grants(self, task_id: str) -> None:
-        """Clear all grants for a finished or cancelled task."""
-        self._task_grants.pop(task_id, None)
+    def revoke_task_grants(
+        self, task_id: str, repository_path: Optional[str] = None
+    ) -> None:
+        """
+        Clear task grants for a finished or cancelled task.
+
+        When ``repository_path`` is provided only that repository's grant is
+        removed; otherwise every repository grant for the task is removed.
+        """
+        if repository_path is None:
+            for key in [key for key in self._task_grants if key[0] == task_id]:
+                self._task_grants.pop(key, None)
+        else:
+            self._task_grants.pop((task_id, repository_path), None)
 
     def revoke_repo_grants(self, repository_path: str) -> None:
         """Clear all grants for a repository."""
