@@ -33,6 +33,7 @@ export default function FindingDetailPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [remediationResult, setRemediationResult] = useState<RemediationResponse | null>(null);
+  const [remediationError, setRemediationError] = useState('');
 
   if (isLoading) return <Loading />;
   if (!finding) return <ErrorState message="Finding not found" />;
@@ -54,15 +55,24 @@ export default function FindingDetailPage() {
   };
 
   const handleAutonomousRemediate = async () => {
+    const confirmed = window.confirm(
+      'Apply an automated remediation patch to the repository?\n\n' +
+        'This modifies files on the server and requires a server-side approval decision.'
+    );
+    if (!confirmed) return;
+
+    setRemediationError('');
     try {
       const result = await remediateMutation.mutateAsync({
         repository_path: '.',
         finding_id: String(findingId),
-        auto_approve: true,
         run_tests: true,
       });
       setRemediationResult(result);
     } catch (err: any) {
+      setRemediationError(
+        err.response?.data?.detail || 'Remediation request failed.'
+      );
       console.error('Autonomous remediation failed:', err);
     }
   };
@@ -98,9 +108,12 @@ export default function FindingDetailPage() {
             ) : (
               <Wrench className="w-4 h-4" />
             )}
-            {remediateMutation.isPending ? 'Executing Remediation Loop...' : 'Autonomous 1-Click Remediate'}
+            {remediateMutation.isPending ? 'Executing Remediation Loop...' : 'Review & Remediate'}
           </button>
         </div>
+        {remediationError && (
+          <p className="text-sm text-red-600 mb-4">{remediationError}</p>
+        )}
         <p className="text-gray-600 mb-4">{finding.statement}</p>
 
         {/* Remediation Feedback Card */}

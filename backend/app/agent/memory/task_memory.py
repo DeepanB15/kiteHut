@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.core.path_guard import PathContainmentError, resolve_repository_path
+
 logger = logging.getLogger("repolens.agent.memory")
 
 
@@ -33,7 +35,8 @@ class TaskMemory:
         if relative_path in self.snapshots:
             return  # Already snapshotted initial state
 
-        target = (self.repository_path / relative_path).resolve()
+        # Refuse to snapshot anything that resolves outside the repository.
+        target = resolve_repository_path(self.repository_path, relative_path)
         if target.exists() and target.is_file():
             try:
                 with open(target, "r", encoding="utf-8", errors="replace") as f:
@@ -52,7 +55,11 @@ class TaskMemory:
         """
         restored = []
         for rel_path, original_content in self.snapshots.items():
-            target = (self.repository_path / rel_path).resolve()
+            try:
+                target = resolve_repository_path(self.repository_path, rel_path)
+            except PathContainmentError as error:
+                logger.error("Skipping unsafe rollback target %s: %s", rel_path, error)
+                continue
             try:
                 if original_content is None:
                     # Was newly created during task, delete it
@@ -73,7 +80,11 @@ class TaskMemory:
         if relative_path not in self.snapshots:
             return False
 
-        target = (self.repository_path / relative_path).resolve()
+        try:
+            target = resolve_repository_path(self.repository_path, relative_path)
+        except PathContainmentError as error:
+            logger.error("Refusing unsafe rollback target %s: %s", relative_path, error)
+            return False
         try:
             original_content = self.snapshots[relative_path]
             if original_content is None:

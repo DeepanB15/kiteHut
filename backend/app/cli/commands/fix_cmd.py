@@ -31,6 +31,17 @@ from app.intelligence.orchestrator.orchestrator import IntelligenceOrchestrator
 from app.verification.verification_engine import VerificationEngine
 
 
+def _approval_decision(req: PermissionRequest, auto_approve: bool) -> DecisionType:
+    """Resolve the CLI approval decision. ``--yes`` is an explicit local opt-in."""
+    if auto_approve:
+        return DecisionType.ALLOW_ONCE
+    print("\n" + yellow(bold("Permission Request:")))
+    print(f"  Action: {req.tool_name} ({req.permission_type.value})")
+    print(f"  Description: {req.description}")
+    confirm = click.confirm("Apply this patch to your repository?", default=True)
+    return DecisionType.ALLOW_ONCE if confirm else DecisionType.DENY
+
+
 @click.command(name="fix")
 @click.argument("finding_id", required=True)
 @click.option(
@@ -92,13 +103,7 @@ def fix_command(finding_id: str, repo_path: str, auto_approve: bool, no_tests: b
 
     # 3. Interactive confirmation callback if not auto_approve
     def interactive_approval(req: PermissionRequest) -> DecisionType:
-        if auto_approve:
-            return DecisionType.ALLOW
-        print("\n" + yellow(bold("Permission Request:")))
-        print(f"  Action: {req.tool_name} ({req.permission_type.value})")
-        print(f"  Description: {req.description}")
-        confirm = click.confirm("Apply this patch to your repository?", default=True)
-        return DecisionType.ALLOW if confirm else DecisionType.DENY
+        return _approval_decision(req, auto_approve)
 
     remediation_loop = ActionRemediationLoop(str(root))
     remediation_loop.permission_manager.approval_callback = interactive_approval

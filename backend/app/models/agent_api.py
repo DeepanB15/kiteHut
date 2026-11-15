@@ -4,7 +4,7 @@ Pydantic API models for Agent Core and Guardian Endpoints.
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.state.agent_state import StepStatus, TaskStatus
 
@@ -86,10 +86,18 @@ class TaskRollbackResponse(BaseModel):
 
 
 class RemediationRequest(BaseModel):
+    """Remediation request payload.
+
+    Approval is never accepted from the client. Unknown fields (including the
+    removed ``auto_approve`` flag) are rejected so a client cannot attempt to
+    self-approve.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     repository_path: str = Field(..., description="Repository directory path")
     finding_id: Optional[str] = Field(None, description="Finding ID to remediate")
     finding_data: Optional[Dict[str, Any]] = Field(None, description="Direct finding payload to remediate")
-    auto_approve: bool = Field(True, description="Auto-approve permission requests")
     run_tests: bool = Field(True, description="Run test suite to verify fix and auto-rollback on failure")
     test_paths: Optional[List[str]] = Field(None, description="Specific test file paths to run")
 
