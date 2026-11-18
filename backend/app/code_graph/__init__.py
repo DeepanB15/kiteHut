@@ -2,10 +2,13 @@
 
 Task 11.1 exposes the canonical data contracts, enums and deterministic
 identity helpers. Task 11.2 adds deterministic repository/file discovery.
-Extraction, relationship resolution, validation, building, serialization and
-traversal are implemented in later tasks.
+Task 11.5 adds the deterministic, fail-safe validation pass over assembled
+graphs. Task 11.6 adds the deterministic builder and serialization helpers.
+Task 11.8 adds the optional NetworkX projection (``graph_runtime``) and
+model-backed query helpers (``queries``).
 """
 
+from app.code_graph.builder import CodeGraphBuilder
 from app.code_graph.discovery import (
     DEFAULT_EXCLUDE_DIRS,
     DEFAULT_MAX_FILES,
@@ -47,6 +50,30 @@ from app.code_graph.models import (
     sha256_hex,
     validate_source_span,
 )
+from app.code_graph.queries import (
+    callers,
+    callees,
+    dependents,
+    find_symbols,
+    imports,
+)
+from app.code_graph.serialization import (
+    build_and_serialize,
+    deserialize_graph_json,
+    serialize_graph_json,
+    write_graph_file,
+)
+from app.code_graph.validation import (
+    detect_contradictions,
+    validate_edge_endpoints,
+    validate_file_and_symbol_references,
+    validate_graph,
+    validate_node_ids,
+    validate_provenance_consistency,
+    validate_repository_ownership,
+    validate_source_spans,
+    validate_structural_consistency,
+)
 
 __all__ = [
     "CODE_GRAPH_SCHEMA_VERSION",
@@ -82,8 +109,27 @@ __all__ = [
     "compute_symbol_id",
     "compute_edge_id",
     "validate_source_span",
+    "validate_graph",
+    "validate_node_ids",
+    "validate_edge_endpoints",
+    "validate_repository_ownership",
+    "validate_file_and_symbol_references",
+    "validate_source_spans",
+    "validate_structural_consistency",
+    "validate_provenance_consistency",
+    "detect_contradictions",
+    "find_symbols",
+    "callers",
+    "callees",
+    "imports",
+    "dependents",
     "RepositoryScanner",
     "DEFAULT_EXCLUDE_DIRS",
     "DEFAULT_MAX_FILES",
     "PYTHON_LANGUAGE",
+    "CodeGraphBuilder",
+    "serialize_graph_json",
+    "deserialize_graph_json",
+    "write_graph_file",
+    "build_and_serialize",
 ]

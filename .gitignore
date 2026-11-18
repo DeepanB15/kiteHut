@@ -20,3 +20,4 @@ backend/workspace/
 !**/.env.example
 !**/.env.*.example
 KiteHut/
+*.egg-info/
