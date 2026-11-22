@@ -47,7 +47,10 @@ class ToolExecutor:
         approval_granted: bool = False,
     ) -> ToolResult:
         """Execute a ToolSelection through the controlled boundary."""
-        args = dict(arguments) if arguments else {}
+        # Router-derived hints first; explicitly supplied arguments win.
+        args = dict(selection.primary_tool.suggested_arguments)
+        if arguments:
+            args.update(arguments)
 
         # 1. Registry validation: unknown tool rejected
         tool_name = selection.primary_tool.tool_name
@@ -94,8 +97,8 @@ class ToolExecutor:
                 )
 
         # 3. Argument validation (structural, not arbitrary shell)
-        # Ensure repository_path is present for tools that expect it
-        args.setdefault("repository_path", repository_path)
+        # The selected workspace is authoritative: arguments must not widen it.
+        args["repository_path"] = repository_path
 
         # 4. Execute through existing registry (NOT arbitrary subprocess)
         from app.tools.registry import create_default_tool_registry

@@ -31,6 +31,21 @@ def _json_type_to_python(json_type: Optional[str]):
     return _JSON_TYPE_MAP.get(json_type or "", Any)
 
 
+def _parse_structured_output(output: Optional[str]):
+    """Return parsed JSON for tools that emit structured output, else None."""
+    if not isinstance(output, str):
+        return None
+    stripped = output.lstrip()
+    if not stripped or stripped[0] not in "[{":
+        return None
+    try:
+        import json
+
+        return json.loads(output)
+    except (TypeError, ValueError):
+        return None
+
+
 class RepoLensMCPServer:
     """Single MCP server exposing RepoLens agent tool set."""
 
@@ -79,8 +94,9 @@ class RepoLensMCPServer:
 
         def wrapper(**kwargs) -> Dict[str, Any]:
             args = {k: v for k, v in kwargs.items() if v is not None}
-            # The server's repository path is the default target.
-            args.setdefault("repository_path", self.repository_path)
+            # The server's repository path is the only valid target: a tool
+            # argument must not be able to widen the workspace scope.
+            args["repository_path"] = self.repository_path
             result = self.registry.execute(
                 tool_name=tool.name,
                 arguments=args,
@@ -89,7 +105,15 @@ class RepoLensMCPServer:
                 task_id="mcp_task",
             )
             if result.success:
-                return {"success": True, "output": result.output, "duration_ms": result.duration_ms}
+                response: Dict[str, Any] = {
+                    "success": True,
+                    "output": result.output,
+                    "duration_ms": result.duration_ms,
+                }
+                structured = _parse_structured_output(result.output)
+                if structured is not None:
+                    response["data"] = structured
+                return response
             return {"success": False, "error": result.error, "duration_ms": result.duration_ms}
 
         wrapper.__name__ = tool.name

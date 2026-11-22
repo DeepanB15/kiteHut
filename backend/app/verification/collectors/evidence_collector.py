@@ -13,6 +13,7 @@ from app.context.code.import_analyzer import ImportGraph
 from app.context.code.symbol_index import SymbolIndex
 from app.context.git.git_context import GitWorkspaceContext
 from app.context.project_map.project_map import ProjectMap
+from app.core.path_guard import PathContainmentError, resolve_repository_path
 from app.verification.models.claim import ClaimType, ExtractedClaim
 from app.verification.models.evidence import EvidenceItem, EvidenceType
 
@@ -22,6 +23,47 @@ class EvidenceCollector:
 
     def __init__(self, repository_path: str):
         self.root_path = Path(repository_path).resolve()
+        # Structured records for claim targets rejected by the shared
+        # containment policy.  Diagnostics never contain file content and are
+        # reset at the start of each batch.
+        self.path_diagnostics: List[Dict[str, Any]] = []
+
+    def clear_path_diagnostics(self) -> None:
+        """Reset path-containment diagnostics before a new collection batch."""
+        self.path_diagnostics.clear()
+
+    def _record_path_violation(
+        self,
+        claim: ExtractedClaim,
+        error: Exception,
+        *,
+        target: Optional[str] = None,
+        code: str = "claim_target_path_rejected",
+    ) -> None:
+        """Record a structured diagnostic for a rejected repository path."""
+        raw_target = claim.target_file if target is None else target
+        normalized = (raw_target or "").strip().replace("\\", "/")
+        if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized):
+            reason = "absolute_path"
+        elif ".." in normalized.split("/"):
+            reason = "path_traversal"
+        else:
+            reason = "outside_repository"
+
+        self.path_diagnostics.append(
+            {
+                "code": code,
+                "reason": reason,
+                "severity": "warning",
+                "claim_id": claim.claim_id,
+                "target_file": raw_target,
+                "error_type": type(error).__name__,
+                "message": (
+                    "Repository path was rejected by containment policy; "
+                    "no file or evidence was read."
+                ),
+            }
+        )
 
     def collect_evidence_for_claims(
         self,
@@ -33,6 +75,7 @@ class EvidenceCollector:
     ) -> List[EvidenceItem]:
         """Collect corresponding evidence items for a set of extracted claims."""
         evidence_items: List[EvidenceItem] = []
+        self.clear_path_diagnostics()
 
         for claim in claims:
             items = self.collect_for_claim(
@@ -57,10 +100,23 @@ class EvidenceCollector:
         """Collect evidence for a single claim."""
         collected: List[EvidenceItem] = []
 
-        if not claim.target_file:
+        target = (claim.target_file or "").strip()
+        if not target:
             return collected
 
-        full_path = self.root_path / claim.target_file
+        # Shared containment policy: every claim target is resolved against the
+        # authorized repository root before any filesystem access.  This rejects
+        # absolute paths (including absolute paths inside the root), '..'
+        # traversal and symlink escapes.  Evidence provenance keeps the
+        # caller's original repository-relative path.
+        try:
+            full_path = resolve_repository_path(self.root_path, target)
+        except PathContainmentError as error:
+            self._record_path_violation(claim, error)
+            return collected
+        except (OSError, ValueError, RuntimeError) as error:
+            self._record_path_violation(claim, error)
+            return collected
 
         # 1. File existence / Code evidence
         if full_path.exists() and full_path.is_file():
@@ -105,29 +161,43 @@ class EvidenceCollector:
                             )
 
                 elif claim.claim_type == ClaimType.CONFIG_KEY_MISSING:
-                    # Check .env.example
-                    env_ex = self.root_path / ".env.example"
+                    # Check .env.example through the same containment policy as
+                    # claim targets, so a symlinked template cannot escape.
                     env_key = claim.context_data.get("env_key")
-                    if not env_ex.exists():
-                        collected.append(
-                            EvidenceItem(
-                                evidence_type=EvidenceType.CONFIGURATION,
-                                source_file=".env.example",
-                                description=".env.example file is missing from repository root.",
-                                is_corroborating=True,
-                            )
+                    try:
+                        env_ex = resolve_repository_path(
+                            self.root_path, ".env.example"
                         )
-                    elif env_key:
-                        ex_content = env_ex.read_text(encoding="utf-8", errors="replace")
-                        if env_key not in ex_content:
+                    except (PathContainmentError, OSError, ValueError, RuntimeError) as error:
+                        self._record_path_violation(
+                            claim,
+                            error,
+                            target=".env.example",
+                            code="repository_file_path_rejected",
+                        )
+                    else:
+                        if not env_ex.exists():
                             collected.append(
                                 EvidenceItem(
                                     evidence_type=EvidenceType.CONFIGURATION,
                                     source_file=".env.example",
-                                    description=f"Key '{env_key}' is not defined in .env.example.",
+                                    description=".env.example file is missing from repository root.",
                                     is_corroborating=True,
                                 )
                             )
+                        elif env_key:
+                            ex_content = env_ex.read_text(
+                                encoding="utf-8", errors="replace"
+                            )
+                            if env_key not in ex_content:
+                                collected.append(
+                                    EvidenceItem(
+                                        evidence_type=EvidenceType.CONFIGURATION,
+                                        source_file=".env.example",
+                                        description=f"Key '{env_key}' is not defined in .env.example.",
+                                        is_corroborating=True,
+                                    )
+                                )
 
                 elif claim.claim_type == ClaimType.UNPINNED_DEPENDENCY:
                     # Check manifest

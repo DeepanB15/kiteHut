@@ -18,7 +18,8 @@ from app.verification.classification.truth_classifier import TruthClassifier
 from app.verification.collectors.evidence_collector import EvidenceCollector
 from app.verification.extractors.claim_extractor import ClaimExtractor
 from app.verification.lifecycle.lifecycle_manager import LifecycleManager
-from app.verification.models.claim import ClaimType
+from app.verification.models.claim import ClaimType, ExtractedClaim
+from app.verification.models.evidence import EvidenceItem
 from app.verification.models.lifecycle import LifecycleStatus
 from app.verification.models.priority import Priority
 from app.verification.models.truth import TruthStatus, VerificationVerdict
@@ -148,6 +149,20 @@ class VerificationEngine:
 
         report.findings = verified_findings
         return report
+
+    def verify_claim(
+        self,
+        claim: ExtractedClaim,
+        evidence_items: List[EvidenceItem],
+    ) -> VerificationVerdict:
+        """Verify a single claim against supplied evidence using the existing verifier.
+
+        This is the claim-level entry point for callers that already hold the
+        claim and its evidence (for example the Code Graph evidence collector)
+        and do not need to re-extract claims from a finding.
+        """
+        verifier = self._select_verifier(claim.claim_type)
+        return verifier.verify(claim, evidence_items)
 
     def _select_verifier(self, claim_type: ClaimType) -> BaseVerifier:
         """Route claim to matching domain verifier."""

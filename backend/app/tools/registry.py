@@ -13,6 +13,16 @@ from app.agent.permissions.manager import PermissionManager
 from app.agent.permissions.policies import PermissionRequest
 from app.agent.state.agent_state import ToolResult
 from app.tools.base import BaseTool
+from app.tools.code_graph_tools import (
+    GraphCalleesTool,
+    GraphCallersTool,
+    GraphContextTool,
+    GraphDependentsTool,
+    GraphFindSymbolTool,
+    GraphImpactTool,
+    GraphImportsTool,
+    VerifyClaimTool,
+)
 from app.tools.file_tools import (
     DeleteFileTool,
     EditFileTool,
@@ -94,10 +104,10 @@ class ToolRegistry:
                 error=f"Tool not found: '{tool_name}'. Available tools: {list(self._tools.keys())}",
             )
 
-        # Ensure repository_path is injected if needed
+        # The execution workspace is trusted state.  Always overwrite it so a
+        # tool argument can never redirect execution to another repository.
         exec_args = dict(arguments)
-        if "repository_path" not in exec_args:
-            exec_args["repository_path"] = repository_path
+        exec_args["repository_path"] = repository_path
 
         # Permission check
         if permission_manager:
@@ -158,5 +168,15 @@ def create_default_tool_registry() -> ToolRegistry:
     registry.register(GetGitDiffTool())
     registry.register(GetGitLogTool())
     registry.register(RunAnalysisTool())
+
+    # Phase 11.11 — read-only Code Graph, Smart Context and Evidence tools.
+    registry.register(GraphFindSymbolTool())
+    registry.register(GraphCallersTool())
+    registry.register(GraphCalleesTool())
+    registry.register(GraphImportsTool())
+    registry.register(GraphDependentsTool())
+    registry.register(GraphImpactTool())
+    registry.register(GraphContextTool())
+    registry.register(VerifyClaimTool())
 
     return registry

@@ -5,20 +5,32 @@ Discovers source files, detects language, chunks, returns deterministic chunks.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from .model import ChunkList
 from .python_chunker import chunk_python_file
 
 
-def chunk_repo(repo_path: str) -> List[ChunkList]:
-    """Chunk all supported source files in a repository."""
+def chunk_repo(repo_path: str, max_files: Optional[int] = None) -> List[ChunkList]:
+    """Chunk all supported source files in a repository.
+
+    ``max_files`` optionally bounds how many files are read and chunked; the
+    default (``None``) preserves the original unbounded behaviour.
+    """
     repo = Path(repo_path)
     results: List[ChunkList] = []
-    for py_file in sorted(repo.rglob("*.py")):
+    candidates = [
+        py_file
+        for py_file in sorted(repo.rglob("*.py"))
         # Skip venv / hidden / cache
-        if any(p.startswith(".") or p in ("__pycache__", ".venv", "venv", "env") for p in py_file.parts):
-            continue
+        if not any(
+            p.startswith(".") or p in ("__pycache__", ".venv", "venv", "env")
+            for p in py_file.parts
+        )
+    ]
+    if max_files is not None:
+        candidates = candidates[: max(0, max_files)]
+    for py_file in candidates:
         try:
             content = py_file.read_text(encoding="utf-8")
         except Exception:

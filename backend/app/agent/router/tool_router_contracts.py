@@ -5,7 +5,7 @@ Deterministic decision layer: AgentTask -> Tool Selection Decision.
 No MCP execution. No side effects. No autonomous execution.
 """
 
-from typing import List, Optional, Dict
+from typing import Any, List, Optional, Dict
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -38,6 +38,10 @@ class ToolDecision(BaseModel):
     reason: str = Field(description="Routing reason / explanation")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score")
     requires_confirmation: bool = Field(default=False, description="Requires user approval")
+    suggested_arguments: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Deterministic arguments derived from the task query (additive hint)",
+    )
 
     model_config = {"validate_by_name": True}
 
@@ -60,6 +64,14 @@ TOOL_REGISTRY: Dict[str, ToolCapability] = {
     "get_repo_structure": ToolCapability(tool_name="get_repo_structure", category=ToolCategory.RETRIEVAL, description="Get repository structure", read_only=True, requires_approval=False),
     "read_file": ToolCapability(tool_name="read_file", category=ToolCategory.CODE, description="Read file contents", read_only=True, requires_approval=False),
     "get_dependencies": ToolCapability(tool_name="get_dependencies", category=ToolCategory.ANALYSIS, description="Get project dependencies", read_only=True, requires_approval=False),
+    "graph_find_symbol": ToolCapability(tool_name="graph_find_symbol", category=ToolCategory.RETRIEVAL, description="Locate symbols in the Code Graph", read_only=True, requires_approval=False),
+    "graph_callers": ToolCapability(tool_name="graph_callers", category=ToolCategory.ANALYSIS, description="Find static callers of a symbol", read_only=True, requires_approval=False),
+    "graph_callees": ToolCapability(tool_name="graph_callees", category=ToolCategory.ANALYSIS, description="Find static callees of a symbol", read_only=True, requires_approval=False),
+    "graph_imports": ToolCapability(tool_name="graph_imports", category=ToolCategory.ANALYSIS, description="List file imports", read_only=True, requires_approval=False),
+    "graph_dependents": ToolCapability(tool_name="graph_dependents", category=ToolCategory.ANALYSIS, description="List files importing a file", read_only=True, requires_approval=False),
+    "graph_impact": ToolCapability(tool_name="graph_impact", category=ToolCategory.ANALYSIS, description="Navigate related symbols and dependents", read_only=True, requires_approval=False),
+    "graph_context": ToolCapability(tool_name="graph_context", category=ToolCategory.RETRIEVAL, description="Graph-guided context retrieval", read_only=True, requires_approval=False),
+    "verify_claim": ToolCapability(tool_name="verify_claim", category=ToolCategory.ANALYSIS, description="Verify a claim with source evidence", read_only=True, requires_approval=False),
     "run_analysis": ToolCapability(tool_name="run_analysis", category=ToolCategory.ANALYSIS, description="Run analysis", read_only=True, requires_approval=False),
     "git_status": ToolCapability(tool_name="git_status", category=ToolCategory.GIT, description="Git working tree status", read_only=True, requires_approval=False),
     "git_diff": ToolCapability(tool_name="git_diff", category=ToolCategory.GIT, description="Show git diff", read_only=True, requires_approval=False),

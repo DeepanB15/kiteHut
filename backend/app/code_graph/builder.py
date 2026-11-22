@@ -125,14 +125,34 @@ class CodeGraphBuilder:
                 found = self.extractor.extract(source_file)
             except SyntaxError as exc:
                 syntax_error_files.add(source_file.relative_path)
+                # The extractor re-raises with a path-prefixed message.  Use
+                # the original parser error for the diagnostic detail so the
+                # path is reported exactly once.
+                origin = (
+                    exc.__cause__
+                    if isinstance(exc.__cause__, SyntaxError)
+                    else exc
+                )
+                reason = getattr(origin, "msg", None) or str(origin)
+                lineno = getattr(origin, "lineno", None) or getattr(
+                    exc, "lineno", None
+                )
+                offset = getattr(origin, "offset", None) or getattr(
+                    exc, "offset", None
+                )
+                location = (
+                    f" (line {lineno}, offset {offset})"
+                    if lineno is not None
+                    else ""
+                )
                 processing_errors.append(
                     _diagnostic(
                         "syntax_error",
                         f"Syntax error in {source_file.relative_path}: "
-                        f"{exc.msg} (line {exc.lineno}, offset {exc.offset})",
+                        f"{reason}{location}",
                         severity=DiagnosticSeverity.ERROR,
                         relative_path=source_file.relative_path,
-                        line=getattr(exc, "lineno", None),
+                        line=lineno,
                     )
                 )
             except OSError as exc:
@@ -199,10 +219,24 @@ class CodeGraphBuilder:
         # 5. Validate ---------------------------------------------------------
         validation: GraphValidationResult = validate_graph(graph)
 
+        # Collect all warnings with deterministic ordering
         warnings: list[GraphDiagnostic] = [
             *scan.warnings,
             *validation.warnings,
         ]
+        # Propagate relationship diagnostics (excluding those already in
+        # unresolved_imports/unresolved_calls to avoid duplicates)
+        # Only add diagnostics with WARNING or INFO severity to warnings;
+        # ERROR/FATAL severity diagnostics are added to errors instead
+        for d in relationship.diagnostics:
+            if d.code not in ("unresolved_import", "ambiguous_import") and d not in relationship.unresolved_imports and d not in relationship.unresolved_calls:
+                if d.severity in (DiagnosticSeverity.WARNING, DiagnosticSeverity.INFO):
+                    warnings.append(d)
+                elif d.severity in (DiagnosticSeverity.ERROR, DiagnosticSeverity.FATAL):
+                    # These are already captured in processing_errors or scan.errors
+                    # or we add them as errors to ensure they're surfaced
+                    if d not in processing_errors:
+                        processing_errors.append(d)
         warnings.sort(key=_diagnostic_sort_key)
 
         # A validator error rejects the graph entirely: the build fails and
@@ -333,22 +367,31 @@ class CodeGraphBuilder:
                 )
             )
 
-        symbol_id_by_qualified_name = {
-            symbol.qualified_name: symbol.id for symbol in symbol_nodes
-        }
-        declaration_by_qualified_name = {
-            declaration.qualified_name: declaration
-            for declaration in declarations
-        }
+        # Wire each symbol to its lexical parent by full qualified name.
+        # ``SymbolDeclaration.parent_qualified_name`` records only the bare
+        # immediate scope name, which is ambiguous across nesting levels, so
+        # the parent is derived from this symbol's own qualified-name prefix.
+        # A prefix that matches more than one declaration is left unwired
+        # rather than guessed.
+        symbols_by_identity: dict[tuple[str, str], list[SymbolNode]] = {}
         for symbol in symbol_nodes:
-            declaration = declaration_by_qualified_name.get(symbol.qualified_name)
-            if declaration is None or declaration.parent_qualified_name is None:
+            symbols_by_identity.setdefault(
+                (symbol.relative_path, symbol.qualified_name), []
+            ).append(symbol)
+
+        for symbol in symbol_nodes:
+            parent_qualified_name = symbol.qualified_name.rpartition(".")[0]
+            if not parent_qualified_name:
                 continue
-            parent_id = symbol_id_by_qualified_name.get(
-                declaration.parent_qualified_name
-            )
-            if parent_id is not None:
-                symbol.parent_id = parent_id
+            candidates = [
+                candidate
+                for candidate in symbols_by_identity.get(
+                    (symbol.relative_path, parent_qualified_name), []
+                )
+                if candidate.id != symbol.id
+            ]
+            if len(candidates) == 1:
+                symbol.parent_id = candidates[0].id
 
         # Edges carry deterministic IDs from construction; dedupe defensively
         # in case relationship extraction emitted a duplicate.  The assembled

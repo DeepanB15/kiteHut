@@ -75,8 +75,10 @@ class TestReviewIntegration:
 
 
 class TestReportingDoesNotBreakMCP:
-    def test_mcp_server_still_exposes_23_tools(self):
+    def test_mcp_server_still_exposes_existing_and_graph_tools(self):
         from app.mcp.server import get_mcp_server
         server = get_mcp_server(".")
-        assert len(server.get_registered_tool_names()) == 23
-        assert "run_analysis" in server.get_registered_tool_names()
+        names = server.get_registered_tool_names()
+        assert len(names) == 31  # 23 pre-existing + 8 Phase 11.11 tools
+        assert "run_analysis" in names
+        assert "graph_callers" in names

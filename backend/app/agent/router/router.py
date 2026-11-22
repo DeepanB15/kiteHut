@@ -5,13 +5,97 @@ Deterministic routing logic: AgentTask -> ToolSelection.
 Side-effect free. No MCP execution.
 """
 
+import re
 import uuid
-from typing import Optional, Dict
+from typing import Any, Dict, List, Optional
 
 from app.agent.state.agent_state import AgentTask, AgentStatus
 from app.agent.router.tool_router_contracts import (
     ToolSelection, ToolDecision, ToolCategory, ToolCapability, get_registry
 )
+
+
+_EXTRACTED_ARGUMENT_PATTERNS: Dict[str, List[str]] = {
+    "symbol": [
+        r"who\s+calls",
+        r"callers?\s+of",
+        r"callees?\s+of",
+        r"symbol\s+(?:named\s+)?",
+        r"changing",
+    ],
+    "path": [
+        r"dependents?\s+of",
+        r"imports?\s+(?:for|of)",
+        r"file\s+",
+    ],
+    "target": [
+        r"impact\s+of\s+(?:changing|modifying|editing)",
+        r"impact\s+of",
+        r"affected\s+by",
+    ],
+}
+
+_GRAPH_ARGUMENT_KEYS = {
+    "graph_find_symbol": "query",
+    "graph_callers": "symbol",
+    "graph_callees": "symbol",
+    "graph_imports": "path",
+    "graph_dependents": "path",
+    "graph_impact": "target",
+    "graph_context": "query",
+    "verify_claim": "claim",
+}
+
+
+_FIND_SYMBOL_PATTERNS = [
+    r"(?:find|locate|lookup|look\s+up)\s+(?:the\s+)?(?:symbol|function|class|method|module)?\s*",
+    r"where\s+is\s+(?:the\s+)?(?:symbol|function|class|method|module)?\s*",
+    r"symbol\s+(?:named\s+)?",
+]
+
+
+def _extract_symbol_query(query: str) -> Optional[str]:
+    """Extract the symbol name a lookup query refers to."""
+    for pattern in _FIND_SYMBOL_PATTERNS:
+        match = re.search(pattern + r"([A-Za-z_][\w.]*)", query, re.IGNORECASE)
+        if match:
+            value = match.group(1).rstrip("?.!,;:")
+            if value:
+                return value
+    return None
+
+
+def _extract_argument(query: str, patterns: List[str]) -> Optional[str]:
+    for pattern in patterns:
+        match = re.search(
+            pattern + r"\s+(?:the\s+|symbol\s+|file\s+)?([A-Za-z_][\w./\\-]*)",
+            query,
+            re.IGNORECASE,
+        )
+        if match:
+            value = match.group(1).rstrip("?.!,;:")
+            if value:
+                return value
+    return None
+
+
+def _suggest_arguments(tool_name: str, query: str) -> Dict[str, Any]:
+    """Derive deterministic tool arguments from the task query.
+
+    Only the graph/evidence tools are covered; existing tools keep their
+    current argument handling.  Suggestions are hints that the executor merges
+    with explicitly supplied arguments.
+    """
+    key = _GRAPH_ARGUMENT_KEYS.get(tool_name)
+    if key is None or not query:
+        return {}
+    if tool_name in {"graph_context", "verify_claim"}:
+        return {key: query.strip()}
+    if tool_name == "graph_find_symbol":
+        value = _extract_symbol_query(query)
+        return {key: value} if value else {}
+    value = _extract_argument(query, _EXTRACTED_ARGUMENT_PATTERNS.get(key, []))
+    return {key: value} if value else {}
 
 
 class AgentRouter:
@@ -72,6 +156,54 @@ class AgentRouter:
             selected_name = "run_tests"
             reason = "Query references testing"
             confidence = 0.85
+        elif (
+            "caller" in query_lower
+            or "called by" in query_lower
+            or "who calls" in query_lower
+        ):
+            selected_name = "graph_callers"
+            reason = "Query references static callers"
+            confidence = 0.8
+        elif "callee" in query_lower or "calls into" in query_lower:
+            selected_name = "graph_callees"
+            reason = "Query references static callees"
+            confidence = 0.8
+        elif (
+            "dependents" in query_lower
+            or "who imports" in query_lower
+            or "impact" in query_lower
+            or "affected" in query_lower
+        ):
+            if "impact" in query_lower or "affected" in query_lower:
+                selected_name = "graph_impact"
+                reason = "Query references dependency/impact navigation"
+            else:
+                selected_name = "graph_dependents"
+                reason = "Query references files that import another file"
+            confidence = 0.8
+        elif " import" in f" {query_lower}":
+            selected_name = "graph_imports"
+            reason = "Query references file imports"
+            confidence = 0.75
+        elif "code graph" in query_lower and "context" in query_lower:
+            selected_name = "graph_context"
+            reason = "Query explicitly requests graph-guided context"
+            confidence = 0.75
+        elif "verify" in query_lower and (
+            "claim" in query_lower or "evidence" in query_lower
+        ):
+            selected_name = "verify_claim"
+            reason = "Query asks to verify a claim with evidence"
+            confidence = 0.8
+        elif "symbol" in query_lower and (
+            "find" in query_lower
+            or "lookup" in query_lower
+            or "locate" in query_lower
+            or "where" in query_lower
+        ):
+            selected_name = "graph_find_symbol"
+            reason = "Query asks to locate a symbol"
+            confidence = 0.75
         elif "auth" in query_lower or "authentication" in query_lower:
             selected_name = "search_code"
             reason = "Security/auth query -> code retrieval"
@@ -140,6 +272,7 @@ class AgentRouter:
             reason=reason,
             confidence=confidence,
             requires_confirmation=requires_confirmation,
+            suggested_arguments=_suggest_arguments(selected_name, task.query or ""),
         )
 
         return ToolSelection(

@@ -16,9 +16,19 @@ from app.agent.router.router import AgentRouter
 # Registry
 # ------------------------------------------------------------------
 
-def test_registry_has_23_tools():
+def test_registry_includes_phase11_11_graph_tools():
     names = get_registered_tool_names()
-    assert len(names) == 23
+    assert len(names) == 31
+    assert {
+        "graph_find_symbol",
+        "graph_callers",
+        "graph_callees",
+        "graph_imports",
+        "graph_dependents",
+        "graph_impact",
+        "graph_context",
+        "verify_claim",
+    } <= set(names)
 
 
 def test_registry_no_duplicates():
