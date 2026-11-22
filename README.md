@@ -1,4 +1,4 @@
-# 🔍 RepoLens — Local AI Engineering Agent & Continuous Guardian
+# 🔍 Kitehut — Local AI Engineering Agent & Continuous Guardian
 
 <div align="center">
 
@@ -11,7 +11,7 @@
 [![Ollama](https://img.shields.io/badge/Ollama-Local%20LLMs-black?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.ai)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)
 
-**RepoLens is a local-first, self-hosted AI engineering agent that lives alongside your repository.**  
+**a local-first, self-hosted AI engineering agent that lives alongside your repository.**  
 *It continuously monitors, understands, reviews, modifies, tests, verifies, and secures code while keeping the developer in full control.*
 
 [Key Features](#-key-features) • [Architecture](#-architecture) • [Quickstart](#-quickstart) • [CLI Commands](#-cli-commands) • [Web Dashboard](#-web-dashboard) • [Configuration](#-configuration) • [GitHub CI/CD](#-github-integration--cicd)
